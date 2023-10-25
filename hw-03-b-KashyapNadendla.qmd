@@ -1,0 +1,387 @@
+---
+title: "hw-03-b-KashyapNadendla"
+format: html
+editor: visual
+---
+
+```{r 1}
+
+spam <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-15/spam.csv')
+```
+
+You can add options to executable code like this
+
+```{r}
+
+if(!require(pacman))
+  install.packages("pacman")
+
+pacman::p_load(
+  C50,                # C5.0 Decision Trees and Rule-Based Models
+  caret,              # Classification and Regression Training
+  e1071,              # Misc Functions of the Department of Statistics (e1071), TU Wien
+  keras,              # R Interface to 'Keras'
+  kernlab,            # Kernel-Based Machine Learning Lab
+  lattice,            # Trellis Graphics for R
+  MASS,               # Support Functions and Datasets for Venables and Ripley's MASS
+  mlbench,            # Machine Learning Benchmark Problems
+  nnet,               # Feedforward Neural Networks and Multinomial Log-Linear Models
+  palmerpenguins,     # Palmer Archipelago (Antarctica) Penguin Data
+  partykit,           # A Toolkit for Recursive Partytioning
+  randomForest,       # Breiman and Cutler's Random Forests for Classification and Regression
+  rpart,              # Recursive partitioning models
+  scales,             # Scale Functions for Visualization
+  tidymodels,         # Tidy machine learning framework
+  tidyverse,          # Tidy data wrangling and visualization
+  xgboost             # Extreme Gradient Boosting
+)
+```
+
+```{r}
+
+options(digits=3)
+```
+
+```{r}
+
+data(spam, package="mlbench")
+spam <- as.data.frame(spam)
+spam |> glimpse()
+```
+
+```{r}
+
+set.seed(123)  # for reproducibility
+inTrain <- createDataPartition(y = spam$yesno, p = .8)[[1]]
+spam_train <- dplyr::slice(spam, inTrain)
+spam_test <- dplyr::slice(spam, -inTrain)
+```
+
+## **Fitting Different Classification Models to the Training Data**
+
+```{r}
+
+train_index <- createFolds(spam_train$yesno, k = 10)
+```
+
+### **K-Nearest Neighbors**
+
+```{r}
+
+knnFit <- spam_train |> train(yesno ~ .,
+  method = "knn",
+  data = _,
+  preProcess = "scale",
+    tuneLength = 5,
+  tuneGrid=data.frame(k = 1:10),
+    trControl = trainControl(method = "cv", indexOut = train_index))
+
+```
+
+### **PART (Rule-based classifier)**
+
+```{r echo=FALSE}
+
+rulesFit <- spam_train |> train(yesno ~ .,
+  method = "PART",
+  data = _,
+  tuneLength = 5,
+  trControl = trainControl(method = "cv", indexOut = train_index))
+rulesFit
+```
+
+### **Linear Support Vector Machines**
+
+```{r}
+
+svmFit <- spam_train |> train(yesno ~.,
+  method = "svmLinear",
+  data = _,
+    tuneLength = 5,
+    trControl = trainControl(method = "cv", indexOut = train_index))
+
+svmFit
+```
+
+```{r}
+
+svmFit <- spam_train |> train(yesno ~.,
+  method = "svmLinear",
+  data = _,
+    tuneLength = 5,
+    trControl = trainControl(method = "cv", indexOut = train_index))
+
+svmFit
+```
+
+```{r}
+
+svmFit$finalModel
+```
+
+### **Random Forest**
+
+```{r}
+
+randomForestFit <- spam_train |> train(yesno ~ .,
+  method = "rf",
+  data = _,
+    tuneLength = 5,
+    trControl = trainControl(method = "cv", indexOut = train_index))
+
+```
+
+### **Gradient Boosted Decision Trees (xgboost)**
+
+```{r}
+
+xgboostFit <- spam_train |> train(yesno ~ .,
+  method = "xgbTree",
+  data = _,
+  tuneLength = 5,
+  trControl = trainControl(method = "cv", indexOut = train_index),
+  tuneGrid = expand.grid(
+    nrounds = 20,
+    max_depth = 3,
+    colsample_bytree = .6,
+    eta = 0.1,
+    gamma=0,
+    min_child_weight = 1,
+    subsample = .5
+  ))
+
+xgboostFit
+```
+
+```{r}
+
+xgboostFit$finalModel
+```
+
+### **Artificial Neural Network**
+
+```{r}
+
+nnetFit <- spam_train |> train(yesno ~ .,
+  method = "nnet",
+  data = _,
+    tuneLength = 5,
+    trControl = trainControl(method = "cv", indexOut = train_index),
+  trace = FALSE)
+
+nnetFit
+```
+
+```{r}
+
+nnetFit$finalModel
+```
+
+## **Comparing Models**
+
+```{r}
+
+resamps <- resamples(list(
+  SVM = svmFit,
+  KNN = knnFit,
+  randomForest = randomForestFit,
+  xgboost = xgboostFit,
+  NeuralNet = nnetFit
+    ))
+
+resamps
+```
+
+```{r}
+
+summary(resamps)
+```
+
+```{r}
+
+library(lattice)
+bwplot(resamps, layout = c(3, 1))
+```
+
+```{r}
+
+difs <- diff(resamps)
+difs
+```
+
+```{r}
+
+summary(difs)
+```
+
+## **Applying the Chosen Model to the Test Data**
+
+```{r}
+
+pr <- predict(randomForestFit, spam_test)
+pr
+```
+
+```{r confusion,echo=FALSE}
+
+confusionMatrix(pr, reference = spam_test$yesno)
+```
+
+## **Comparing Decision Boundaries of Popular Classification Techniques**
+
+```{r}
+
+library(scales)
+library(tidyverse)
+library(ggplot2)
+library(caret)
+
+decisionplot <- function(model, data, class_var, 
+  predict_type = c("class", "prob"), resolution = 3 * 72) {
+  # resolution is set to 72 dpi if the image is rendered  3 inches wide. 
+  
+  y <- data |> pull(class_var)
+  x <- data |> dplyr::select(-all_of(class_var))
+  
+  # resubstitution accuracy
+  prediction <- predict(model, x, type = predict_type[1])
+  # LDA returns a list
+  if(is.list(prediction)) prediction <- prediction$class
+  prediction <- factor(prediction, levels = levels(y))
+  
+  cm <- confusionMatrix(data = prediction, 
+                        reference = y)
+  acc <- cm$overall["Accuracy"]
+  
+  # evaluate model on a grid
+  r <- sapply(x[, 1:2], range, na.rm = TRUE)
+  xs <- seq(r[1,1], r[2,1], length.out = resolution)
+  ys <- seq(r[1,2], r[2,2], length.out = resolution)
+  g <- cbind(rep(xs, each = resolution), rep(ys, time = resolution))
+  colnames(g) <- colnames(r)
+  g <- as_tibble(g)
+  
+  ### guess how to get class labels from predict
+  ### (unfortunately not very consistent between models)
+  cl <- predict(model, g, type = predict_type[1])
+  
+  # LDA returns a list
+  prob <- NULL
+  if(is.list(cl)) { 
+    prob <- cl$posterior
+    cl <- cl$class
+  } else
+    if(!is.na(predict_type[2]))
+      try(prob <- predict(model, g, type = predict_type[2]))
+  
+  # we visualize the difference in probability/score between the 
+  # winning class and the second best class.
+  # don't use probability if predict for the classifier does not support it.
+  max_prob <- 1
+  if(!is.null(prob))
+    try({
+      max_prob <- t(apply(prob, MARGIN = 1, sort, decreasing = TRUE))
+      max_prob <- max_prob[,1] - max_prob[,2]
+    }, silent = TRUE) 
+  
+  cl <- factor(cl, levels = levels(y))
+  
+  g <- g |> add_column(prediction = cl, probability = max_prob)
+  
+  ggplot(g, mapping = aes(
+    x = .data[[colnames(g)[1]]], y = .data[[colnames(g)[2]]])) +
+    geom_raster(mapping = aes(fill = prediction, alpha = probability)) +
+    geom_contour(mapping = aes(z = as.numeric(prediction)), 
+      bins = length(levels(cl)), linewidth = .5, color = "black") +
+    geom_point(data = data, mapping =  aes(
+      x = .data[[colnames(data)[1]]], 
+      y = .data[[colnames(data)[2]]],
+      shape = .data[[class_var]]), alpha = .7) + 
+    scale_alpha_continuous(range = c(0,1), limits = c(0,1), guide = "none") +  
+    labs(subtitle = paste("Training accuracy:", round(acc, 2))) +
+     theme_minimal(base_size = 14)
+}
+```
+
+```{r}
+
+x <- spam |> dplyr::select(bang, make, yesno)
+x
+```
+
+## SPAM Dataset
+
+```{r}
+
+ggplot(x, aes(x = bang, y = make, fill = yesno)) +  
+  stat_density_2d(geom = "polygon") +
+  geom_point() +
+  theme_minimal(base_size = 14) +
+  labs(x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       fill = "Species",
+       alpha = "Density")
+```
+
+#### Naive Bayes Classifier
+
+```{r}
+
+model <- x |> e1071::naiveBayes(yesno ~ ., data = _)
+decisionplot(model, x, class_var = "yesno", 
+             predict_type = c("class", "raw")) + 
+  labs(title = "Naive Bayes",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+#### Linear Discriminant Analysis
+
+```{r}
+
+model <- x |> MASS::lda(yesno ~ ., data = _)
+decisionplot(model, x, class_var = "yesno") + 
+  labs(title = "LDA",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+#### Multinomial Logistic Regression (implemented in nnet)
+
+```{r}
+model <- x |> nnet::multinom(yesno ~., data = _)
+```
+
+```{r}
+
+decisionplot(model, x, class_var = "yesno") + 
+  labs(title = "Multinomial Logistic Regression",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+```{r}
+
+model <-x |> nnet::nnet(yesno ~ ., data = _, size = 1, trace = FALSE)
+decisionplot(model, x, class_var  = "yesno", 
+  predict_type = c("class", "raw")) + 
+  labs(title = "NN (1 neuron)",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+```{r}
+
+```
+
+```{r}
+
+```

@@ -1,0 +1,489 @@
+---
+title: "hw-03-KashyapNadendla"
+format: html
+editor: visual
+---
+
+## SETUP
+
+```{r}
+
+if(!require(pacman))
+  install.packages("pacman")
+
+pacman::p_load(tidyverse, rpart, rpart.plot, caret, 
+  lattice, sampling, pROC, mlbench)
+```
+
+## Loading spam dataset
+
+```{r warning=FALSE,message=FALSE}
+
+spam <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-15/spam.csv')
+
+```
+
+```{r}
+
+summary(spam)
+```
+
+## Decision Trees
+
+```{r}
+
+
+pam <- drop_na(spam)
+
+tree_default <- spam |>
+  rpart( spam$yesno~.,data=_)
+tree_default
+```
+
+### **Create Tree With Default Settings (uses pre-pruning)**
+
+```{r}
+
+library(rpart.plot)
+rpart.plot(tree_default, extra = 1)
+```
+
+### **Create a Full Tree**
+
+```{r}
+
+tree_colors <- c("gray", "green", "blue", "brown", "orange", "red", "purple")
+
+tree_full <- spam |> 
+  rpart(yesno ~ . , data = _, 
+        control = rpart.control(minsplit = 2, cp = 0))
+rpart.plot(tree_full, extra = 1, 
+           roundint=FALSE,
+            box.palette = tree_colors) # specify 7 colors
+```
+
+```{r}
+
+tree_full
+```
+
+Training error on tree with pre-pruning
+
+```{r}
+
+predict(tree_default, spam) |> head ()
+```
+
+```{r}
+
+pred <- predict(tree_default, spam, type = "class")
+head(pred)
+```
+
+```{r}
+
+confusion_table <- with(spam, table(yesno, pred))
+confusion_table
+```
+
+```{r}
+
+correct <- confusion_table |> diag() |> sum()
+correct
+```
+
+```{r}
+
+error <- confusion_table |> sum() - correct
+error
+```
+
+```{r}
+
+accuracy <- correct / (correct + error)
+accuracy
+```
+
+Using a function for accuracy
+
+```{r}
+
+accuracy <- function(truth, prediction) {
+    tbl <- table(truth, prediction)
+    sum(diag(tbl))/sum(tbl)
+}
+
+accuracy(spam |> pull(yesno), pred)
+```
+
+### Training error of the tree
+
+```{r}
+
+accuracy(spam |> pull(yesno), 
+         predict(tree_full, spam, type = "class"))
+```
+
+Get a confusion table with more statistics (using caret)
+
+```{r}
+
+library(caret)
+#confusionMatrix(data = pred, 
+                #reference = spam |> pull(yesno))
+```
+
+## **Model Evaluation with Caret**
+
+```{r}
+
+set.seed(2000)
+```
+
+### **Hold out Test Data**
+
+```{r}
+
+inTrain <- createDataPartition(y = spam$yesno, p = .8, list = FALSE)
+spam_train <- spam |> slice(inTrain)
+```
+
+```{r}
+
+spam_test <- spam |> slice(-inTrain)
+```
+
+### **Learn a Model and Tune Hyperparameters on the Training Data**
+
+```{r}
+
+fit <- spam_train |>
+  train(yesno ~ .,
+    data = _ ,
+    method = "rpart",
+    control = rpart.control(minsplit = 2),
+    trControl = trainControl(method = "cv", number = 10),
+    tuneLength = 5)
+
+fit
+```
+
+```{r}
+
+rpart.plot(fit$finalModel, extra = 2,
+  box.palette = list("Gy", "Gn", "Bu", "Bn", "Or", "Rd", "Pu"))
+```
+
+```{r}
+
+varImp(fit)
+```
+
+```{r}
+
+imp <- varImp(fit, compete = FALSE)
+imp
+```
+
+```{r}
+
+ggplot(imp)
+```
+
+## **Testing: Confusion Matrix and Confidence Interval for Accuracy**
+
+```{r}
+
+pred <- predict(fit, newdata = spam_test)
+pred
+```
+
+```{r  confusion2, echo=FALSE}
+
+#confusionMatrix(data = pred, 
+                #ref = spam_test |> pull(yesno))
+```
+
+## **Model Comparison**
+
+```{r}
+
+train_index <- createFolds(spam_train$yesno, k = 10)
+```
+
+Build models
+
+```{r}
+
+rpartFit <- spam_train |> 
+  train(yesno ~ .,
+        data = _,
+        method = "rpart",
+        tuneLength = 10,
+        trControl = trainControl(method = "cv", indexOut = train_index)
+  )
+```
+
+```{r}
+
+knnFit <- spam_train |> 
+  train(yesno ~ .,
+        data = _,
+        method = "knn",
+        preProcess = "scale",
+          tuneLength = 10,
+          trControl = trainControl(method = "cv", indexOut = train_index)
+  )
+```
+
+Compare accuracy over all folds
+
+```{r}
+
+resamps <- resamples(list(
+        CART = rpartFit,
+        kNearestNeighbors = knnFit
+        ))
+
+summary(resamps)
+```
+
+```{r}
+
+library(lattice)
+bwplot(resamps, layout = c(3, 1))
+```
+
+```{r}
+
+difs <- diff(resamps)
+difs
+```
+
+```{r}
+
+summary(difs)
+```
+
+## **Class Imbalance**
+
+```{r}
+
+library(rpart)
+library(rpart.plot)
+data(Zoo, package="mlbench")
+```
+
+```{r}
+
+ggplot(Zoo, aes(y = type)) + geom_bar()
+```
+
+```{r}
+
+spam_yesno <- spam |> 
+  mutate(type = factor(spam$yesno == "y", 
+                       levels = c(FALSE, TRUE),
+                       labels = c("yes", "no")))
+```
+
+```{r}
+
+summary(spam_yesno)
+```
+
+```{r}
+
+ggplot(spam_yesno, aes(y = type)) + geom_bar()
+```
+
+```{r}
+
+set.seed(1234)
+
+inTrain <- createDataPartition(y = spam$yesno, p = .5, list = FALSE)
+training_yesno <- spam_yesno |> slice(inTrain)
+testing_yesno <- spam_yesno |> slice(-inTrain)
+```
+
+### **Option 1: Use the Data As Is and Hope For The Best**
+
+```{r}
+
+fit <- training_yesno |> 
+  train(yesno ~ .,
+        data = _,
+        method = "rpart",
+        trControl = trainControl(method = "cv"))
+```
+
+```{r}
+
+fit
+```
+
+```{r}
+
+rpart.plot(fit$finalModel, extra = 2)
+```
+
+```{r echo=FALSE}
+
+#confusionMatrix(data = predict(fit, testing_yesno),
+                #ref = testing_yesno$yesno, positive = "y")
+```
+
+### **Option 2: Balance Data With Resampling**
+
+```{r}
+
+library(sampling)
+set.seed(1000) # for repeatability
+
+id <- strata(training_yesno, stratanames = "yesno", size = c(50, 50), method = "srswr")
+training_yesno_balanced <- training_yesno |> 
+  slice(id$ID_unit)
+table(training_yesno_balanced$yesno)
+```
+
+```{r}
+
+fit <- training_yesno_balanced |> 
+  train(yesno ~ .,
+        data = _,
+        method = "rpart",
+        trControl = trainControl(method = "cv"),
+        control = rpart.control(minsplit = 5))
+
+fit
+```
+
+```{r}
+
+rpart.plot(fit$finalModel, extra = 2)
+```
+
+```{r}
+
+#confusionMatrix(data = predict(fit, testing_yesno),
+                #ref = testing_yesno$yesno, positive = "y")
+```
+
+```{r}
+
+id <- strata(training_yesno, stratanames = "yesno", size = c(50, 100), method = "srswr")
+training_yesno_balanced <- training_yesno |> 
+  slice(id$ID_unit)
+table(training_yesno_balanced$type)
+```
+
+```{r}
+
+fit <- training_yesno_balanced |> 
+  train(yesno ~ .,
+        data = _,
+        method = "rpart",
+        trControl = trainControl(method = "cv"),
+        control = rpart.control(minsplit = 5))
+
+#confusionMatrix(data = predict(fit, testing_yesno),
+                #ref = testing_yesno$yesno, positive = "y")
+```
+
+### **Option 3: Build A Larger Tree and use Predicted Probabilities**
+
+```{r}
+
+fit <- training_yesno |> 
+  train(yesno ~ .,
+        data = _,
+        method = "rpart",
+        tuneLength = 10,
+        trControl = trainControl(method = "cv",
+        classProbs = TRUE,  ## necessary for predict with type="prob"
+        summaryFunction=twoClassSummary),  ## necessary for ROC
+        metric = "ROC",
+        control = rpart.control(minsplit = 3))
+```
+
+```{r}
+
+fit
+```
+
+```{r}
+
+rpart.plot(fit$finalModel, extra = 2)
+```
+
+Create a classifier
+
+```{r}
+
+prob <- predict(fit, testing_yesno, type = "prob")
+tail(prob)
+```
+
+```{r}
+
+pred <- as.factor(ifelse(prob[,"y"]>=0.01, "yes", "no"))
+
+#confusionMatrix(data = pred,
+                #ref = testing_yesno$yesno, positive = "y")
+```
+
+#### Plot the ROC Curve
+
+```{r}
+
+
+library("pROC")
+r <- roc(testing_yesno$yesno == "y", prob[,"y"])
+```
+
+```{r}
+
+r
+```
+
+```{r}
+
+ggroc(r) + geom_abline(intercept = 1, slope = 1, color = "darkgrey")
+```
+
+### **Option 4: Use a Cost-Sensitive Classifier**
+
+```{r}
+
+cost <- matrix(c(
+  0,   1,
+  100, 0
+), byrow = TRUE, nrow = 2)
+cost
+```
+
+```{r}
+
+fit <- training_yesno |> 
+  train(yesno ~ .,
+        data = _,
+        method = "rpart",
+        parms = list(loss = cost),
+        trControl = trainControl(method = "cv"))
+```
+
+```{r}
+
+fit
+```
+
+```{r}
+
+rpart.plot(fit$finalModel, extra = 2)
+```
+
+```{r}
+
+#confusionMatrix(data = predict(fit, testing_reptile),
+                #ref = testing_reptile$type, positive = "reptile")
+```
