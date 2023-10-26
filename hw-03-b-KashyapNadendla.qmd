@@ -2,14 +2,13 @@
 title: "hw-03-b-KashyapNadendla"
 format: html
 editor: visual
+author: "Kashyap Sai Prasad Nadendla"
 ---
 
 ```{r 1}
 
 spam <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-08-15/spam.csv')
 ```
-
-You can add options to executable code like this
 
 ```{r}
 
@@ -42,6 +41,8 @@ pacman::p_load(
 options(digits=3)
 ```
 
+Using the spam data set from Tidy Tuesday:
+
 ```{r}
 
 data(spam, package="mlbench")
@@ -66,6 +67,8 @@ train_index <- createFolds(spam_train$yesno, k = 10)
 
 ### **K-Nearest Neighbors**
 
+K-Nearest Neighbors produces an `Accuracy` of 0.96 when the final value of the model was `k` = 1.
+
 ```{r}
 
 knnFit <- spam_train |> train(yesno ~ .,
@@ -76,21 +79,14 @@ knnFit <- spam_train |> train(yesno ~ .,
   tuneGrid=data.frame(k = 1:10),
     trControl = trainControl(method = "cv", indexOut = train_index))
 
-```
-
-### **PART (Rule-based classifier)**
-
-```{r echo=FALSE}
-
-rulesFit <- spam_train |> train(yesno ~ .,
-  method = "PART",
-  data = _,
-  tuneLength = 5,
-  trControl = trainControl(method = "cv", indexOut = train_index))
-rulesFit
+knnFit
 ```
 
 ### **Linear Support Vector Machines**
+
+Linear Support Vector Machines (SVMs) are supervised learning models used for classification and regression analysis. It focuses on finding a linear decision boundary to separate data into different classes.
+
+Linear SVMs produced an `Accuracy` of 0.845 with tuning parameter 'C' was at a constant value of 1.
 
 ```{r}
 
@@ -121,6 +117,10 @@ svmFit$finalModel
 
 ### **Random Forest**
 
+Random Forest are supervised learning models used for classification and regression analysis. It constructs a multitude of decision trees during training and outputting the class that is the mode of the classes or mean prediction of the individual trees.
+
+The `Accuracy` achieved is 0.96 where final value used for the model was mtry = 6.
+
 ```{r}
 
 randomForestFit <- spam_train |> train(yesno ~ .,
@@ -129,9 +129,20 @@ randomForestFit <- spam_train |> train(yesno ~ .,
     tuneLength = 5,
     trControl = trainControl(method = "cv", indexOut = train_index))
 
+randomForestFit
 ```
 
 ### **Gradient Boosted Decision Trees (xgboost)**
+
+Gradient Boosted Decision Trees is a set of machine learning models that produces a prediction model in the form of an ensemble of decision trees. It builds the model in a stage-wise fashion. Each subsequent tree is fit on the residual errors of prior trees to incrementally improve the model.
+
+The xgboost model produces an `Accuracy` of 0.87.
+
+`subsample` held constant at a value of 0.5
+
+`max_depth` held constant at value of 0.6
+
+`nrounds` held constant at value of 20
 
 ```{r}
 
@@ -159,6 +170,8 @@ xgboostFit$finalModel
 ```
 
 ### **Artificial Neural Network**
+
+Accuracy by the Neural Network was at 0.87 for a final value of `size` = 7
 
 ```{r}
 
@@ -192,6 +205,8 @@ resamps <- resamples(list(
 resamps
 ```
 
+The average `Accuracy` value for KNN and Random Forest are the highest at 0.96 followed by xgBoost and Neural Network at 0.87 and 0.8 respectively. SCM has the least accuracy value of 0.84
+
 ```{r}
 
 summary(resamps)
@@ -224,6 +239,8 @@ pr
 
 ```{r confusion,echo=FALSE}
 
+
+spam_test$yesno <- as.factor(spam_test$yesno)
 confusionMatrix(pr, reference = spam_test$yesno)
 ```
 
@@ -238,6 +255,7 @@ library(caret)
 
 decisionplot <- function(model, data, class_var, 
   predict_type = c("class", "prob"), resolution = 3 * 72) {
+  
   # resolution is set to 72 dpi if the image is rendered  3 inches wide. 
   
   y <- data |> pull(class_var)
@@ -288,65 +306,141 @@ decisionplot <- function(model, data, class_var,
   
   g <- g |> add_column(prediction = cl, probability = max_prob)
   
-  ggplot(g, mapping = aes(
+ ggplot(g, mapping = aes(
     x = .data[[colnames(g)[1]]], y = .data[[colnames(g)[2]]])) +
     geom_raster(mapping = aes(fill = prediction, alpha = probability)) +
     geom_contour(mapping = aes(z = as.numeric(prediction)), 
-      bins = length(levels(cl)), linewidth = .5, color = "black") +
+      bins = length(levels(cl)), linewidth = 0.5, color = "black") +
     geom_point(data = data, mapping =  aes(
       x = .data[[colnames(data)[1]]], 
       y = .data[[colnames(data)[2]]],
-      shape = .data[[class_var]]), alpha = .7) + 
-    scale_alpha_continuous(range = c(0,1), limits = c(0,1), guide = "none") +  
+      shape = .data[[class_var]]), alpha = 0.7) + 
+    scale_alpha_continuous(range = c(0, 5), limits = c(0, 6), guide = "none") +  
     labs(subtitle = paste("Training accuracy:", round(acc, 2))) +
-     theme_minimal(base_size = 14)
+    theme_minimal(base_size = 14) +
+    coord_cartesian(xlim = c(0, 1))
 }
 ```
 
+The data set has the `yesno` variable as a string variable. Using as factor, we convert the data and create a new data frame with the columns `money` and `dollar` along with `yesno`
+
 ```{r}
 
-x <- spam |> dplyr::select(bang, make, yesno)
-x
+set.seed(100)
+spam <- as_tibble(spam) |>
+  drop_na()
+
+
+
+knn_x <- spam |> dplyr::select(money, dollar, yesno) |>
+  sample_n(500, replace = TRUE)
+
+
+x <- spam |> dplyr::select(money, dollar, yesno)
+
+knn_x$yesno <- as.factor(knn_x$yesno)
+x$yesno <- as.factor(x$yesno)
 ```
+
+The following plots show us `yes` and `no` values for `money` and `dollar`.
 
 ## SPAM Dataset
 
+Setting a seed of 100 for reproducibility and sample size of 300. `rnorm` is being used to generate random numbers from a normal distribution. The plot gave an error that it requires non negative data, hence this is being done.
+
+The plot shows a higher density of `yes` over `no`.
+
 ```{r}
 
-ggplot(x, aes(x = bang, y = make, fill = yesno)) +  
-  stat_density_2d(geom = "polygon") +
+set.seed(100)
+n <- 300
+spam_plot <- data.frame(
+  money = rnorm(n),
+  dollar = rnorm(n),
+  yesno = as.factor(sample(c("Yes", "No"), n, replace = TRUE))
+)
+
+ggplot(spam_plot, aes(x = money, y = dollar, fill = yesno)) +  
+  stat_density_2d(geom = "polygon", aes(alpha = after_stat(level))) +
   geom_point() +
   theme_minimal(base_size = 14) +
-  labs(x = "Bill length (mm)",
-       y = "Bill depth (mm)",
-       fill = "Species",
+  labs(x = "Money",
+       y = "Dollar",
+       fill = "Yes/No",
        alpha = "Density")
+```
+
+#### K-Nearest Neighbors Classifier
+
+For KNN the model was giving an error saying too many connections hence the sample size has been reduced to 500.
+
+The training accuracy for 1 neighbor is 0.84
+
+```{r}
+
+model <- knn_x |> caret::knn3(yesno ~ ., data = _, k = 1)
+decisionplot(model, knn_x, class_var = "yesno") + 
+  labs(title = "kNN (1 neighbor)",
+       x = "Money",
+       y = "Dollar",
+       shape = "Yes/No",
+       fill = "Prediction")
+```
+
+The training accuracy for 3 neighbor is 0.87
+
+```{r}
+
+model <- knn_x |> caret::knn3(yesno ~ ., data = _, k = 3)
+decisionplot(model, knn_x, class_var = "yesno") + 
+  labs(title = "kNN (3 neighbor)",
+       x = "Money",
+       y = "Dollar",
+       shape = "Yes/No",
+       fill = "Prediction")
+```
+
+The training accuracy for 9 neighbor is 0.85
+
+```{r}
+
+model <- knn_x |> caret::knn3(yesno ~ ., data = _, k = 9)
+decisionplot(model, knn_x, class_var = "yesno") + 
+  labs(title = "kNN (9 neighbor)",
+       x = "Money",
+       y = "Dollar",
+       shape = "Yes/No",
+       fill = "Prediction")
 ```
 
 #### Naive Bayes Classifier
 
+The training accuracy for Naive Bayes is 0.74
+
 ```{r}
+
+levels(x$make)
 
 model <- x |> e1071::naiveBayes(yesno ~ ., data = _)
 decisionplot(model, x, class_var = "yesno", 
              predict_type = c("class", "raw")) + 
   labs(title = "Naive Bayes",
-       x = "Bill length (mm)",
-       y = "Bill depth (mm)",
-       shape = "Species",
-       fill = "Prediction")
+       x = "Money",
+       y = "Dollar")
 ```
 
 #### Linear Discriminant Analysis
+
+The training accuracy for Linear Discriminant Analysis is 0.71
 
 ```{r}
 
 model <- x |> MASS::lda(yesno ~ ., data = _)
 decisionplot(model, x, class_var = "yesno") + 
   labs(title = "LDA",
-       x = "Bill length (mm)",
-       y = "Bill depth (mm)",
-       shape = "Species",
+       x = "Money",
+       y = "Dollar",
+       shape = "Yes/No",
        fill = "Prediction")
 ```
 
@@ -356,15 +450,21 @@ decisionplot(model, x, class_var = "yesno") +
 model <- x |> nnet::multinom(yesno ~., data = _)
 ```
 
+The training accuracy for Multinominal Logistic Regression is 0.77
+
 ```{r}
 
 decisionplot(model, x, class_var = "yesno") + 
   labs(title = "Multinomial Logistic Regression",
        x = "Bill length (mm)",
        y = "Bill depth (mm)",
-       shape = "Species",
+       shape = "Yes/No",
        fill = "Prediction")
 ```
+
+#### Single Layer Feed-forward Neural Networks
+
+The training accuracy for 1 neuron is 0.84
 
 ```{r}
 
@@ -378,10 +478,88 @@ decisionplot(model, x, class_var  = "yesno",
        fill = "Prediction")
 ```
 
+The training accuracy for 2 neighbor is 0.84
+
 ```{r}
 
+model <-x |> nnet::nnet(yesno ~ ., data = _, size = 2, trace = FALSE)
+decisionplot(model, x, class_var  = "yesno", 
+  predict_type = c("class", "raw")) + 
+  labs(title = "NN (2 neurons)",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
 ```
 
+The training accuracy for 3 neighbor is 0.84
+
 ```{r}
 
+model <-x |> nnet::nnet(yesno ~ ., data = _, size = 3, trace = FALSE)
+decisionplot(model, x, class_var  = "yesno", 
+  predict_type = c("class", "raw")) + 
+  labs(title = "NN (3 neurons)",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+#### Decision Trees
+
+The training accuracy for CART is 0.84
+
+```{r}
+
+model <- x |> rpart::rpart(yesno ~ ., data = _)
+decisionplot(model, x, class_var = "yesno") + 
+  labs(title = "CART",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+The training accuracy for C5.0 is 0.84
+
+```{r}
+
+
+model <- x |> C50::C5.0(yesno ~ ., data = _)
+decisionplot(model, x, class_var = "yesno") + 
+  labs(title = "C5.0",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+The training accuracy for Random Forest is 0.84
+
+```{r}
+
+model <- x |> randomForest::randomForest(yesno ~ ., data = _)
+decisionplot(model, x, class_var = "yesno") + 
+  labs(title = "Random Forest",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
+```
+
+### SVM
+
+The training accuracy for SVM (Linear kernel) is 0.81
+
+```{r}
+
+
+model <- x |> e1071::svm(yesno ~ ., data = _, kernel = "linear")
+decisionplot(model, x, class_var = "yesno") + 
+  labs(title = "SVM (linear kernel)",
+       x = "Bill length (mm)",
+       y = "Bill depth (mm)",
+       shape = "Species",
+       fill = "Prediction")
 ```
