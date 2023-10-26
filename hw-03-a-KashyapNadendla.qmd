@@ -15,7 +15,9 @@ pacman::p_load(tidyverse, rpart, rpart.plot, caret,
   lattice, sampling, pROC, mlbench)
 ```
 
-## Loading spam dataset
+## Loading spam data set
+
+The spam data set from Tidy Tuesday classifies whether an email is spam or not and contains variables which indicate the frequency of certain words and characters in the email.
 
 ```{r warning=FALSE,message=FALSE}
 
@@ -30,6 +32,8 @@ summary(spam)
 
 ## Decision Trees
 
+rpart is a function that fits a decision tree model using recursive partitioning. We have provided the "**yesno**" variable to be partitioned.
+
 ```{r}
 
 
@@ -42,6 +46,8 @@ tree_default
 
 ### **Create Tree With Default Settings (uses pre-pruning)**
 
+Here we try to predict if the email is spam or not based on the tree formed. For example, if n is dollar\<0.056 then it goes towards yes and the next part of the tree is - bang \< 0.092. That is, if n is lesser than that value then it can be assumed as not a spam. Hence the tree creates a classification for the dataset.
+
 ```{r}
 
 library(rpart.plot)
@@ -49,6 +55,8 @@ rpart.plot(tree_default, extra = 1)
 ```
 
 ### **Create a Full Tree**
+
+We specify control parameters to grow a fully unpruned tree, with a minimum node size of 2 and complexity pruning as 0, this allows the tree to grow until it perfectly fits the training data, resulting in a complex and overfit tree.
 
 ```{r}
 
@@ -64,15 +72,17 @@ rpart.plot(tree_full, extra = 1,
 
 ```{r}
 
-tree_full
+#tree_full
 ```
 
-Training error on tree with pre-pruning
+Training error on tree with pre-pruning Here we are making predictions using a decision tree model (`tree_default`) on the `spam` data frame.
 
 ```{r}
 
 predict(tree_default, spam) |> head ()
 ```
+
+Predicts whether email is spam or not.
 
 ```{r}
 
@@ -80,11 +90,15 @@ pred <- predict(tree_default, spam, type = "class")
 head(pred)
 ```
 
+The table compares the predicted value with the value in the `spam` data frame.
+
 ```{r}
 
 confusion_table <- with(spam, table(yesno, pred))
 confusion_table
 ```
+
+The model correctly predicts the value 3966 times.
 
 ```{r}
 
@@ -92,11 +106,15 @@ correct <- confusion_table |> diag() |> sum()
 correct
 ```
 
+The model incorrectly predicts the value 635 times.
+
 ```{r}
 
 error <- confusion_table |> sum() - correct
 error
 ```
+
+The accuracy of the model is 86.2%
 
 ```{r}
 
@@ -116,7 +134,7 @@ accuracy <- function(truth, prediction) {
 accuracy(spam |> pull(yesno), pred)
 ```
 
-### Training error of the tree
+Training error of tree
 
 ```{r}
 
@@ -129,11 +147,16 @@ Get a confusion table with more statistics (using caret)
 ```{r}
 
 library(caret)
-#confusionMatrix(data = pred, 
-                #reference = spam |> pull(yesno))
+
+spam$yesno <- as.factor(spam$yesno)
+
+confusionMatrix(data = pred, 
+                reference = spam |> pull(yesno))
 ```
 
 ## **Model Evaluation with Caret**
+
+Set random number generator seed to make results reproducible.
 
 ```{r}
 
@@ -141,6 +164,8 @@ set.seed(2000)
 ```
 
 ### **Hold out Test Data**
+
+Here, we partition data the 80% training and 20% testing. Test data is not used in the model building process and set aside for only testing the model.
 
 ```{r}
 
@@ -155,6 +180,10 @@ spam_test <- spam |> slice(-inTrain)
 
 ### **Learn a Model and Tune Hyperparameters on the Training Data**
 
+The package caret combines training and validation for `hyperparameter` tuning into a single function called `train()`. It internally splits the data into training and validation sets and this will provide you with error estimates for different hyperparameter settings.
+
+We can observe, as the value cp value increases, the accuracy drops.
+
 ```{r}
 
 fit <- spam_train |>
@@ -168,6 +197,8 @@ fit <- spam_train |>
 fit
 ```
 
+The fitted decision tree model to plot.
+
 ```{r}
 
 rpart.plot(fit$finalModel, extra = 2,
@@ -179,11 +210,15 @@ rpart.plot(fit$finalModel, extra = 2,
 varImp(fit)
 ```
 
+The variable importance is calculated from a fitted model object.
+
 ```{r}
 
 imp <- varImp(fit, compete = FALSE)
 imp
 ```
+
+Dollar has the highest value at 100, the second highest is bang with around 47 and money, n000 and make are the last 3 values respectively.
 
 ```{r}
 
@@ -192,11 +227,15 @@ ggplot(imp)
 
 ## **Testing: Confusion Matrix and Confidence Interval for Accuracy**
 
+Using the best model on the test data.
+
 ```{r}
 
 pred <- predict(fit, newdata = spam_test)
 pred
 ```
+
+The confusion matrix is giving an error due to arguments not having the same length.
 
 ```{r  confusion2, echo=FALSE}
 
@@ -206,12 +245,16 @@ pred
 
 ## **Model Comparison**
 
+We will compare decision trees with a `k-nearest neighbors (kNN)` classifier. We will create a fixed sampling scheme (10-folds) so we compare the different models using exactly the same folds. It is specified as `trControl` during training.
+
 ```{r}
 
 train_index <- createFolds(spam_train$yesno, k = 10)
 ```
 
 Build models
+
+Rpart -
 
 ```{r}
 
@@ -223,6 +266,8 @@ rpartFit <- spam_train |>
         trControl = trainControl(method = "cv", indexOut = train_index)
   )
 ```
+
+KNN -
 
 ```{r}
 
@@ -236,7 +281,9 @@ knnFit <- spam_train |>
   )
 ```
 
-Compare accuracy over all folds
+Compare accuracy over all folds.
+
+K-Nearest Neighbor and CART both have produce high accuracy bur Kappa is at 0.7 and 0.8 max value respectively.
 
 ```{r}
 
@@ -247,6 +294,8 @@ resamps <- resamples(list(
 
 summary(resamps)
 ```
+
+A boxplot with the accuracy and kappa data for KNN and CART.
 
 ```{r}
 
@@ -271,12 +320,6 @@ summary(difs)
 
 library(rpart)
 library(rpart.plot)
-data(Zoo, package="mlbench")
-```
-
-```{r}
-
-ggplot(Zoo, aes(y = type)) + geom_bar()
 ```
 
 ```{r}
@@ -287,15 +330,21 @@ spam_yesno <- spam |>
                        labels = c("yes", "no")))
 ```
 
+We can observe that there is a class imbalance as the value `yes` has 2788 observations while `no` has 1813.
+
 ```{r}
 
 summary(spam_yesno)
 ```
 
+A bar plot is plotted with the above data.
+
 ```{r}
 
 ggplot(spam_yesno, aes(y = type)) + geom_bar()
 ```
+
+Creating the test and training data. A 50/50 split is used here.
 
 ```{r}
 
@@ -308,6 +357,8 @@ testing_yesno <- spam_yesno |> slice(-inTrain)
 
 ### **Option 1: Use the Data As Is and Hope For The Best**
 
+Training a decision tree model on the training data using the cross validation method
+
 ```{r}
 
 fit <- training_yesno |> 
@@ -316,6 +367,8 @@ fit <- training_yesno |>
         method = "rpart",
         trControl = trainControl(method = "cv"))
 ```
+
+The CART model has a perfect accuracy of 1 at `cp` = 0 and 0.5 with Kappa value also as 1 for the two cases.
 
 ```{r}
 
@@ -335,6 +388,8 @@ rpart.plot(fit$finalModel, extra = 2)
 
 ### **Option 2: Balance Data With Resampling**
 
+We resample the data so that `n` and `y` values have a 50/50 split.
+
 ```{r}
 
 library(sampling)
@@ -345,6 +400,8 @@ training_yesno_balanced <- training_yesno |>
   slice(id$ID_unit)
 table(training_yesno_balanced$yesno)
 ```
+
+The CART model has a perfect accuracy of 1 at `cp` = 0 and 0.5 with Kappa value also as 1 for the two cases. The accuracy drops to 0.5 when `cp` = 1
 
 ```{r}
 
@@ -365,8 +422,10 @@ rpart.plot(fit$finalModel, extra = 2)
 
 ```{r}
 
-#confusionMatrix(data = predict(fit, testing_yesno),
-                #ref = testing_yesno$yesno, positive = "y")
+testing_yesno$yesno <- as.factor(testing_yesno$yesno)
+
+confusionMatrix(data = predict(fit, testing_yesno),
+                ref = testing_yesno$yesno, positive = "y")
 ```
 
 ```{r}
@@ -377,6 +436,8 @@ training_yesno_balanced <- training_yesno |>
 table(training_yesno_balanced$type)
 ```
 
+Here Accuracy is 1 using the CART model, indicating perfect accuracy.
+
 ```{r}
 
 fit <- training_yesno_balanced |> 
@@ -386,11 +447,15 @@ fit <- training_yesno_balanced |>
         trControl = trainControl(method = "cv"),
         control = rpart.control(minsplit = 5))
 
-#confusionMatrix(data = predict(fit, testing_yesno),
-                #ref = testing_yesno$yesno, positive = "y")
+training_yesno$yesno <- as.factor(training_yesno$yesno)
+
+confusionMatrix(data = predict(fit, testing_yesno),
+                ref = testing_yesno$yesno, positive = "y")
 ```
 
 ### **Option 3: Build A Larger Tree and use Predicted Probabilities**
+
+We are evaluating the model's performance using cross-validation with the ROC (Receiver Operating Characteristic) metric.
 
 ```{r}
 
@@ -405,6 +470,8 @@ fit <- training_yesno |>
         metric = "ROC",
         control = rpart.control(minsplit = 3))
 ```
+
+The model with **`cp = 0.8888889`** was chosen as the final model for binary classification. This model is expected to have good performance in distinguishing between `y` and `n`, with an ROC of 1.0.
 
 ```{r}
 
@@ -446,6 +513,8 @@ r <- roc(testing_yesno$yesno == "y", prob[,"y"])
 r
 ```
 
+The plot shows sensitivity vs. specificity.
+
 ```{r}
 
 ggroc(r) + geom_abline(intercept = 1, slope = 1, color = "darkgrey")
@@ -461,6 +530,8 @@ cost <- matrix(c(
 ), byrow = TRUE, nrow = 2)
 cost
 ```
+
+The `loss` parameter is used to specify the error costs for different classes.
 
 ```{r}
 
